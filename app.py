@@ -12,39 +12,58 @@ st.set_page_config(
 )
 
 def get_exchange_rates() -> Dict[str, float]:
-    """Get current exchange rates for ILS to various currencies"""
-    # Default fallback rates
+    """Get current exchange rates for ILS to various currencies using ECB API"""
+    # Default fallback rates (updated Feb 2024)
     default_rates = {
-        'USD': 0.28,
-        'EUR': 0.26,
-        'GBP': 0.22,
-        'CAD': 0.38,
-        'AUD': 0.43,
-        'JPY': 41.5
+        'USD': 0.27,
+        'EUR': 0.25,
+        'GBP': 0.21,
+        'CAD': 0.36,
+        'AUD': 0.41,
+        'JPY': 40.0
     }
     
-    # ExchangeRate-API endpoint
-    api_key = os.getenv('EXCHANGERATE_API_KEY', '')
-    if not api_key:
-        st.warning("⚠️ API key not configured. Using fallback exchange rates.")
-        return default_rates
-        
-    base_url = f"https://v6.exchangerate-api.com/v6/{api_key}/latest/ILS"
-    
     try:
-        response = requests.get(base_url)
+        # European Central Bank API (XML feed)
+        response = requests.get('https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml')
         if response.status_code == 200:
-            data = response.json()
-            rates = {
-                currency: data['conversion_rates'].get(currency, default_rates[currency])
-                for currency in default_rates.keys()
-            }
+            from xml.etree import ElementTree
+            
+            # Parse XML
+            root = ElementTree.fromstring(response.content)
+            namespaces = {'ns': 'http://www.ecb.int/vocabulary/2002-08-01/eurofxref'}
+            
+            # Extract rates to EUR
+            eur_rates = {}
+            for rate in root.findall('.//ns:Cube[@currency][@rate]', namespaces):
+                currency = rate.attrib['currency']
+                rate_value = float(rate.attrib['rate'])
+                eur_rates[currency] = rate_value
+            
+            # Add EUR rate
+            eur_rates['EUR'] = 1.0
+            
+            # Get ILS to EUR rate (inverse of EUR to ILS)
+            eur_to_ils = eur_rates.get('ILS', 1/default_rates['EUR'])
+            ils_to_eur = 1 / eur_to_ils
+            
+            # Calculate rates from ILS
+            rates = {}
+            for currency in default_rates.keys():
+                if currency == 'EUR':
+                    rates[currency] = ils_to_eur
+                elif currency in eur_rates:
+                    # Convert through EUR
+                    rates[currency] = ils_to_eur * eur_rates[currency]
+                else:
+                    rates[currency] = default_rates[currency]
+            
             return rates
         else:
             st.warning("⚠️ Unable to fetch current exchange rates. Using fallback rates.")
             return default_rates
     except Exception as e:
-        st.warning("⚠️ Error connecting to exchange rate service. Using fallback rates.")
+        st.warning(f"⚠️ Error connecting to exchange rate service: {str(e)}. Using fallback rates.")
         return default_rates
 
 def format_currency(amount: float, currency: str) -> str:
@@ -64,9 +83,21 @@ def format_currency(amount: float, currency: str) -> str:
 # Get current exchange rates
 rates = get_exchange_rates()
 
+# Add GitHub badge
+st.markdown('[![GitHub](https://img.shields.io/badge/GitHub-View%20Source-black?style=flat&logo=github)](https://github.com/danielrosehill/Israel-To-ROW-Salary-Converter-V2)', unsafe_allow_html=True)
+
 # Custom CSS for styling
 st.markdown("""
     <style>
+    /* Page background and general styles */
+    .stApp {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8edf5 100%);
+    }
+    
+    .stApp > header {
+        background-color: transparent;
+    }
+    
     .big-number {
         font-size: 4em;
         text-align: center;
@@ -95,17 +126,19 @@ st.markdown("""
         text-align: center;
         padding: 20px;
         margin: 15px 0;
-        background: linear-gradient(145deg, #f8f9fa 0%, #f5f5f5 100%);
+        background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
         border-radius: 12px;
         color: #2E7D32;
-        transition: all 0.3s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         border: 2px solid #e0e0e0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     
     .currency-display:hover {
-        transform: scale(1.03);
-        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        transform: scale(1.03) translateY(-2px);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.1);
         border-color: #2E7D32;
+        background: linear-gradient(145deg, #ffffff 0%, #f1f8f1 100%);
     }
     
     /* Much bigger and more prominent plus/minus buttons */
@@ -180,20 +213,34 @@ st.markdown("""
         margin-bottom: 10px;
     }
     
-    /* Improve tab styling */
+    /* Enhanced tab styling */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
+        background: transparent;
+        border-bottom: 2px solid rgba(30,136,229,0.2);
+        padding-bottom: 2px;
     }
     
     .stTabs [data-baseweb="tab"] {
-        padding: 10px 24px;
-        background-color: #f8f9fa;
-        border-radius: 8px 8px 0 0;
+        padding: 12px 24px;
+        background-color: rgba(255, 255, 255, 0.8);
+        border-radius: 12px 12px 0 0;
+        border: 1px solid #e0e0e0;
+        border-bottom: none;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        margin-right: 4px;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: rgba(255, 255, 255, 0.95);
+        transform: translateY(-2px);
     }
     
     .stTabs [aria-selected="true"] {
-        background-color: #1E88E5 !important;
+        background: linear-gradient(135deg, #1E88E5 0%, #1976D2 100%) !important;
         color: white !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(30,136,229,0.3);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -233,33 +280,33 @@ with tab1:
     with row1_col1:
         st.markdown("#### 🇺🇸 USD")
         usd_salary = ils_salary * 12 * rates['USD']
-        st.markdown(f"<div class='currency-display'>{format_currency(usd_salary, 'USD')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='currency-display'>{format_currency(usd_salary, 'USD')}<br><small style='font-size: 0.6em;'>Rate: {rates['USD']:.4f}</small></div>", unsafe_allow_html=True)
     
     with row1_col2:
         st.markdown("#### 🇪🇺 EUR")
         eur_salary = ils_salary * 12 * rates['EUR']
-        st.markdown(f"<div class='currency-display'>{format_currency(eur_salary, 'EUR')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='currency-display'>{format_currency(eur_salary, 'EUR')}<br><small style='font-size: 0.6em;'>Rate: {rates['EUR']:.4f}</small></div>", unsafe_allow_html=True)
     
     with row1_col3:
         st.markdown("#### 🇬🇧 GBP")
         gbp_salary = ils_salary * 12 * rates['GBP']
-        st.markdown(f"<div class='currency-display'>{format_currency(gbp_salary, 'GBP')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='currency-display'>{format_currency(gbp_salary, 'GBP')}<br><small style='font-size: 0.6em;'>Rate: {rates['GBP']:.4f}</small></div>", unsafe_allow_html=True)
     
     # Second row of currencies
     with row2_col1:
         st.markdown("#### 🇨🇦 CAD")
         cad_salary = ils_salary * 12 * rates['CAD']
-        st.markdown(f"<div class='currency-display'>{format_currency(cad_salary, 'CAD')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='currency-display'>{format_currency(cad_salary, 'CAD')}<br><small style='font-size: 0.6em;'>Rate: {rates['CAD']:.4f}</small></div>", unsafe_allow_html=True)
     
     with row2_col2:
         st.markdown("#### 🇦🇺 AUD")
         aud_salary = ils_salary * 12 * rates['AUD']
-        st.markdown(f"<div class='currency-display'>{format_currency(aud_salary, 'AUD')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='currency-display'>{format_currency(aud_salary, 'AUD')}<br><small style='font-size: 0.6em;'>Rate: {rates['AUD']:.4f}</small></div>", unsafe_allow_html=True)
     
     with row2_col3:
         st.markdown("#### 🇯🇵 JPY")
         jpy_salary = ils_salary * 12 * rates['JPY']
-        st.markdown(f"<div class='currency-display'>{format_currency(jpy_salary, 'JPY')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='currency-display'>{format_currency(jpy_salary, 'JPY')}<br><small style='font-size: 0.6em;'>Rate: {rates['JPY']:.4f}</small></div>", unsafe_allow_html=True)
     
 
 with tab2:
@@ -315,7 +362,7 @@ with tab2:
     ils_monthly = int((world_salary / 12) / rate)
     
     st.subheader("Monthly Salary in Israel")
-    st.markdown(f"<div class='currency-display'>🇮🇱 {format_currency(ils_monthly, 'ILS')} ₪</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='currency-display'>🇮🇱 {format_currency(ils_monthly, 'ILS')} ₪<br><small style='font-size: 0.6em;'>Rate: {1/rate:.4f}</small></div>", unsafe_allow_html=True)
 
 with tab3:
     st.header("How To Use This Calculator")
@@ -332,7 +379,7 @@ with tab3:
     3. View the equivalent monthly salary in Israeli Shekels (ILS)
     
     ### Exchange Rates Information
-    - Currency rates are fetched in real-time from ExchangeRate-API
+    - Currency rates are fetched daily from the European Central Bank (ECB)
     - If API is unavailable, fallback rates are used
     - The timestamp below shows when rates were last updated
     - Rates are updated each time you refresh the page
@@ -341,16 +388,38 @@ with tab3:
     - All currency amounts are shown without decimal places
     """)
 
-# Footer
-st.markdown("---")
-st.markdown(
-    "This calculation app for converting between salaries in Israel and the rest of the world "
-    "was developed by [Daniel Rosehill](https://danielrosehill.com) prompting Sonnet 3.5."
-)
+# Footer with enhanced styling
+st.markdown("""
+<div style="background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%); 
+            padding: 25px; 
+            border-radius: 15px; 
+            border: 1px solid #e0e0e0; 
+            margin-top: 40px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <p style="text-align: center; 
+              margin-bottom: 15px; 
+              font-size: 1.1em;
+              color: #1E88E5;">
+        This calculation app for converting between salaries in Israel and the rest of the world 
+        was developed by <a href="https://danielrosehill.com" 
+                          style="color: #1976D2; 
+                                 text-decoration: none; 
+                                 font-weight: bold;
+                                 border-bottom: 2px solid #1976D2;">Daniel Rosehill</a> 
+        prompting Sonnet 3.5.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
-# Add FX rate information
+# Add FX rate information with matching style
 current_time = datetime.datetime.now()
-st.markdown(
-    f"*Exchange rates are provided by ExchangeRate-API. "
-    f"Last updated: {current_time.strftime('%Y-%m-%d %H:%M')} Israel time.*"
-)
+st.markdown(f"""
+<div style="text-align: center; 
+            margin-top: 20px; 
+            padding: 15px; 
+            color: #666;
+            font-style: italic;">
+    Exchange rates are provided by the European Central Bank (ECB).<br>
+    Last updated: {current_time.strftime('%Y-%m-%d %H:%M')} Israel time.
+</div>
+""", unsafe_allow_html=True)
