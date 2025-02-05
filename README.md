@@ -1,5 +1,7 @@
 # Israel To World Salary Calculator 🇮🇱
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://israelisalaryconverter.streamlit.app/)
+
 ![alt text](screenshots/1.png)
 
 A user-friendly web application built with Streamlit that helps convert salaries between Israeli Shekels (ILS) and major world currencies. Perfect for job seekers, employers, and anyone interested in understanding salary equivalents across different currencies.
